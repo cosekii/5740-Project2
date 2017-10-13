@@ -33,6 +33,32 @@ def get_training_corpus(file):
 training_data = 'train.txt'
 t_corpus = get_training_corpus(training_data)
 
+def partition_training_data(data, indices):
+    training = []
+    valid = []
+    indices = set(indices)
+    
+    for i in range(int(len(data) / 3)):
+        if i in indices:
+            training.append(data[i * 3])
+            training.append(data[i * 3 + 1])
+            training.append(data[i * 3 + 2])
+        
+        else:
+            valid.append(data[i * 3])
+            valid.append(data[i * 3 + 1])
+            valid.append(data[i * 3 + 2])
+
+return [training, valid]
+
+# 80% training data size, 20% validating data size
+original_data_size = len(t_corpus)
+train_size = int(original_data_size * 0.8 / 3.0)
+indices = random.sample(range(int(original_data_size / 3)), train_size)
+[corpus_train, corpus_valid] = partition_training_data(t_corpus, indices)
+
+
+
 def get_test_corpus(file):
     corpus = []
     f = open(file, 'r')
