@@ -31,33 +31,7 @@ def get_training_corpus(file):
     return corpus
 
 training_data = 'train.txt'
-t_corpus = get_training_corpus(training_data)
-
-def partition_training_data(data, indices):
-    training = []
-    valid = []
-    indices = set(indices)
-    
-    for i in range(int(len(data) / 3)):
-        if i in indices:
-            training.append(data[i * 3])
-            training.append(data[i * 3 + 1])
-            training.append(data[i * 3 + 2])
-        
-        else:
-            valid.append(data[i * 3])
-            valid.append(data[i * 3 + 1])
-            valid.append(data[i * 3 + 2])
-
-return [training, valid]
-
-# 80% training data size, 20% validating data size
-original_data_size = len(t_corpus)
-train_size = int(original_data_size * 0.8 / 3.0)
-indices = random.sample(range(int(original_data_size / 3)), train_size)
-[corpus_train, corpus_valid] = partition_training_data(t_corpus, indices)
-
-
+train_corpus = get_training_corpus(training_data)
 
 def get_test_corpus(file):
     corpus = []
@@ -88,26 +62,78 @@ def get_test_corpus(file):
 test_data = 'test.txt'
 test_corpus = get_test_corpus(test_data)
 
-def get_corpus_with_unknown(corpus):
-    unk = defaultdict(float)
+def partition_traning_data(data, indices):
+    traning = []
+    valid = []
+    indices = set(indices)
+
+    for i in range(int(len(data) / 3)):
+        if i in indices:
+            traning.append(data[i * 3])
+            traning.append(data[i * 3 + 1])
+            traning.append(data[i * 3 + 2])
+        else:
+            valid.append(data[i * 3])
+            valid.append(data[i * 3 + 1])
+            valid.append(data[i * 3 + 2])
+    return [traning, valid]
+
+# 80% traning data size, 20% validating data size
+original_data_size = len(train_corpus)
+train_size = int(original_data_size * 0.8 / 3.0)
+indices = random.sample(range(int(original_data_size / 3)), train_size)
+[dev_train_corpus, corpus_valid] = partition_traning_data(train_corpus, indices)
+
+def write_valid_into_file(corpus):
+    f = open('valid.csv', 'w')
     for sentence in corpus:
-        if sentence[0] == '<s>':
-            for word in sentence:
-                unk[word] += 1
-    removedlist = set([key for key in unk if unk[key] == 1])
+        for i in range(1,len(sentence)-2):
+            f.writelines(str(sentence[i]) + ' ')
+        f.writelines(str(sentence[len(sentence)-2]) + '\n')
+    f.close()
+    return 0
 
+write_valid_into_file(corpus_valid)
+standard_data_valid = 'valid.csv'
+standard_corpus_using_validpart = get_training_corpus(standard_data_valid)
+
+def write_dev_valid_into_file(corpus):
+    f = open('dev_valid.csv', 'w')
+    w_count = 0
     for j in range(len(corpus)):
-        if corpus[j][0] == '<s>':
-            for i in range(len(corpus[j])):
-                if corpus[j][i] in removedlist:
-                    corpus[j][i] = '<unk>'
-    return corpus
+        if j % 3 != 2:
+            for i in range(1,len(corpus[j])-2):
+                f.writelines(str(corpus[j][i]) + ' ')
+            f.writelines(str(corpus[j][len(corpus[j])-2]) + '\n')
+        else:
+            for i in range(1,len(corpus[j])-2):
+                f.writelines(str(w_count) + ' ')
+                w_count += 1
+            f.writelines(str(w_count) + '\n')
+            w_count += 1
+    f.close()
+    return 0
 
-dev_train_corpus = get_corpus_with_unknown(t_corpus)
-dev_test_corpus = get_corpus_with_unknown(test_corpus)
+write_dev_valid_into_file(corpus_valid)
+test_data_valid = 'dev_valid.csv'
+test_corpus_using_validpart = get_test_corpus(test_data_valid)
 
 
+def accuracy(c1, c2):
+    w_count_all = 0
+    match = 0
+    
+    for j in range(len(c1)):
+        if j%3 == 2:
+            n = len(c1[j]) - 2
+            for i in range(1, n + 1):
+                if c1[j][i] == c2[(j+1)/3-1][i-1]:
+                    match += 1
+                w_count_all += 1
+    a = 1.0 * match / w_count_all
+    return a
 
+'''
 #lexicon <token, label> = #occurrence
 #the most basic baseline system
 def generate_baseline_NE_lexicon(corpus):
@@ -120,9 +146,10 @@ def generate_baseline_NE_lexicon(corpus):
                 lexicon[corpus[3*j][i], corpus[3*j+2][i]] += 1
     return lexicon
 
-#baseline_NE_lexicon = generate_baseline_NE_lexicon(t_corpus)
+baseline_NE_lexicon = generate_baseline_NE_lexicon(t_corpus)
+'''
 
-#calculate #(t_i)
+#calculate #(ti)
 def get_labels_unigram(corpus):
     labels = defaultdict(float)
     for sentence in corpus:
@@ -133,6 +160,7 @@ def get_labels_unigram(corpus):
 
 labels_unigram = get_labels_unigram(dev_train_corpus)
 
+#calculate #(ti-1 ti)
 def get_labels_bigram(corpus):
     labels = defaultdict(float)
     for sentence in corpus:
@@ -142,6 +170,7 @@ def get_labels_bigram(corpus):
     return labels
 labels_bigram = get_labels_bigram(dev_train_corpus)
 
+#calculate #(ti-2 ti-1 ti)
 def get_labels_trigram(corpus):
     labels = defaultdict(float)
     for sentence in corpus:
@@ -152,8 +181,8 @@ def get_labels_trigram(corpus):
 labels_trigram = get_labels_trigram(dev_train_corpus)
 
 
-#calculate P(t_i+1 | t_i)
-def get_transition_bigram_freqs_addk(corpus, unigram, k):
+#calculate P(t_i | t_i-1)
+def get_transition_bigram_freqs(corpus, unigram, k):
     transition = defaultdict(float)
     for sentence in corpus:
         if sentence[0] == '<e>':
@@ -161,14 +190,14 @@ def get_transition_bigram_freqs_addk(corpus, unigram, k):
                 transition[sentence[i], sentence[i+1]] += 1
     V = len(unigram)
     for key in transition:
-        transition[key] = (transition[key] * 1.0 + k) / (unigram[key[0]] + k * V)
+        transition[key] = transition[key] * 1.0 / unigram[key[0]]
     return transition
 
 k = 0.01
-transition_bigram_freqs_addk = get_transition_bigram_freqs_addk(dev_train_corpus, labels_unigram, k)
+transition_bigram_freqs = get_transition_bigram_freqs(dev_train_corpus, labels_unigram, k)
 
-#p(v|wu)=#wuv/#wu
-def get_transition_trigram_freqs_addk(corpus, bigram, k):
+#calculate P(t_i| ti-2 ti-1) = #ti-2ti-1ti / #ti-2ti-1
+def get_transition_trigram_freqs(corpus, bigram, k):
     transition = defaultdict(float)
     for sentence in corpus:
         if sentence[0] == '<e>':
@@ -176,9 +205,9 @@ def get_transition_trigram_freqs_addk(corpus, bigram, k):
                 transition[sentence[i], sentence[i+1], sentence[i+2]] += 1
     V = len(bigram)
     for key in transition:
-        transition[key] = (transition[key] * 1.0 + k) / (bigram[key[0], key[1]] + V * k)
+        transition[key] = transition[key] * 1.0 / bigram[key[0], key[1]]
     return transition
-transition_trigram_freqs_addk = get_transition_trigram_freqs_addk(dev_train_corpus, labels_bigram, k)
+transition_trigram_freqs = get_transition_trigram_freqs(dev_train_corpus, labels_bigram, k)
 
 #calculate P(w_i | t_i)
 #<label, token>
@@ -225,7 +254,7 @@ def merge(b, inner):
     return result
 
 #basic viterbi_algorithm use 
-#P(label_i+1 | label_i) as transition probabilities
+#P(label_i | label_i-1) as transition probabilities
 #P(w_i | label_i) as lexical generation probabilities
 def viterbi_algorithm_bigram(corpus, transition, observation, T):
     lexical_categories = defaultdict(list)
@@ -239,21 +268,37 @@ def viterbi_algorithm_bigram(corpus, transition, observation, T):
             bptr = np.zeros((c,n+1), dtype=np.int16)
             #initialize t=1
             for i in range(c):
-                score[i][1] = transition['<e>', T[i]] * observation[T[i], corpus[lines][1]]
+                a1 = transition['<e>', T[i]]
+                a2 = observation[T[i], corpus[lines][1]]
+                if a1 == 0.0:
+                    a1 = np.random.uniform(low=1e-11,high=1e-10)
+                if a2 == 0.0:
+                    a2 = np.random.uniform(low=1e-11,high=1e-10)
+                score[i][1] = np.log(a1) + np.log(a2)
                 bptr[i][1] = 0
+
             #iteration
             for t in range(2, n+1):
                 for i in range(c):
                     a = np.zeros((c), dtype=np.float64)
                     for k in range(c):
-                        a[k] = score[k][t-1]*transition[T[k], T[i]]
+                        a1 = transition[T[k], T[i]]
+                        if a1 == 0.0:
+                            a1 = np.random.uniform(low=1e-11,high=1e-10)
+                        a[k] = score[k][t-1] + np.log(a1)
                     k = np.argmax(a)
-                    score[i][t] = score[k][t-1] * transition[T[k], T[i]] * observation[T[i], corpus[lines][t]]
+                    a2 = observation[T[i], corpus[lines][t]]
+                    if a2 == 0.0:
+                        a2 = np.random.uniform(low=1e-11,high=1e-10)
+                    score[i][t] = a[k] + np.log(a2)
                     bptr[i][t] = k
             #finally token w_i has label T[tags[i]] 
             b = np.zeros((c), dtype=np.float64)
             for k in range(c):
-                b[k] = score[k][n] * transition[T[k], '</e>']
+                a1 = transition[T[k], '</e>']
+                if a1 == 0.0:
+                    a1 = np.random.uniform(low=1e-11,high=1e-10)
+                b[k] = score[k][n] + np.log(a1)
             tags[n] = np.argmax(b)
             for i in range(n-1,0,-1):
                 tags[i] = bptr[tags[i+1]][i+1]            
@@ -274,7 +319,7 @@ def viterbi_algorithm_bigram(corpus, transition, observation, T):
                 lexical_categories['MISC'].append(r4[m])
     return lexical_categories
 
-lexical_categories_bi = viterbi_algorithm_bigram(dev_test_corpus, transition_bigram_freqs_addk, observation_freqs, T)
+lexical_categories_bi = viterbi_algorithm_bigram(test_corpus, transition_bigram_freqs, observation_freqs, T)
 
 
 def viterbi_algorithm_trigram(corpus, btransition, transition, observation, T):
@@ -291,7 +336,13 @@ def viterbi_algorithm_trigram(corpus, btransition, transition, observation, T):
             #initialize t=1
             for i in range(c):
                 for j in range(c):
-                    score[j][i][1] = btransition['<e>', T[i]] * observation[T[i], corpus[lines][1]]
+                    a1 = transition['<e>', T[i]]
+                    a2 = observation[T[i], corpus[lines][1]]
+                    if a1 == 0.0:
+                        a1 = np.random.uniform(low=1e-11,high=1e-10)
+                    if a2 == 0.0:
+                        a2 = np.random.uniform(low=1e-11,high=1e-10)
+                    score[j][i][1] = np.log(a1) + np.log(a2)
                     bptr[j][i][1] = 0
 
             #iteration
@@ -300,9 +351,15 @@ def viterbi_algorithm_trigram(corpus, btransition, transition, observation, T):
                     for j in range(c):
                         temp = np.zeros((c), dtype=np.float64)
                         for w in range(c):
-                            temp[w] = score[w][j][t-1] * transition[T[w], T[j], T[i]]
+                            a1 = transition[T[w], T[j], T[i]]
+                            if a1 == 0.0:
+                                a1 = np.random.uniform(low=1e-11,high=1e-10)
+                            temp[w] = score[w][j][t-1] + np.log(a1)
                         w = np.argmax(temp)
-                        score[j][i][t] = score[w][j][t-1] * transition[T[w], T[j], T[i]] * observation[T[i], corpus[lines][t]]
+                        a2 = observation[T[i], corpus[lines][t]]
+                        if a2 == 0.0:
+                            a2 = np.random.uniform(low=1e-11,high=1e-10)
+                        score[j][i][t] = temp[w] + np.log(a2)
                         bptr[j][i][t] = w
 
             a = np.zeros((c), dtype=np.float64)
@@ -310,10 +367,13 @@ def viterbi_algorithm_trigram(corpus, btransition, transition, observation, T):
             for i in range(c):
                 b = np.zeros((c), dtype=np.float64)
                 for j in range(c):
-                    b[j] = score[j][i][n] * transition[T[j], T[i], '</e>']
+                    a1 = transition[T[j], T[i], '</e>']
+                    if a1 == 0.0:
+                        a1 = np.random.uniform(low=1e-11,high=1e-10)
+                    b[j] = score[j][i][n] + np.log(a1)
                 j = np.argmax(b)
                 index[i] = j
-                a[i] = score[j][i][n] * transition[T[j], T[i], '</e>']
+                a[i] = b[j]
             i = np.argmax(a)
             j = index[i]
             tags[n] = i
@@ -339,7 +399,7 @@ def viterbi_algorithm_trigram(corpus, btransition, transition, observation, T):
                 lexical_categories['MISC'].append(r4[m])
     return lexical_categories
 
-lexical_categories_tri = viterbi_algorithm_trigram(dev_test_corpus, transition_bigram_freqs_addk, transition_trigram_freqs_addk, observation_freqs, T)
+lexical_categories_tri = viterbi_algorithm_trigram(test_corpus, transition_bigram_freqs, transition_trigram_freqs, observation_freqs, T)
 #normalize output 
 #Type,Prediction
 #PER,......
@@ -406,3 +466,75 @@ def output_test_result_b(result):
     f.writelines(str4)
     f.close()
 output_test_result_b(lexical_categories_tri)
+
+
+####
+def viterbi_algorithm_trigram_test(corpus, btransition, transition, observation, T):
+    f = open('tags.csv','w')
+    tags_list = []
+    c = len(T)
+    for lines in range(len(corpus)):
+        if corpus[lines][0] == '<s>':
+            n = len(corpus[lines])-2
+            tags = np.zeros((n+1), dtype=np.int16)
+            single_line_category = defaultdict(list)
+            score = np.zeros((c,c,n+2), dtype=np.float64)
+            bptr = np.zeros((c,c,n+2), dtype=np.int16)
+            
+            #initialize t=1
+            for i in range(c):
+                for j in range(c):
+                    a1 = transition['<e>', T[i]]
+                    a2 = observation[T[i], corpus[lines][1]]
+                    if a1 == 0.0:
+                        a1 = np.random.uniform(low=1e-11,high=1e-10)
+                    if a2 == 0.0:
+                        a2 = np.random.uniform(low=1e-11,high=1e-10)
+                    score[j][i][1] = np.log(a1) + np.log(a2)
+                    bptr[j][i][1] = 0
+
+            #iteration
+            for t in range(2, n+1):
+                for i in range(c):
+                    for j in range(c):
+                        temp = np.zeros((c), dtype=np.float64)
+                        for w in range(c):
+                            a1 = transition[T[w], T[j], T[i]]
+                            if a1 == 0.0:
+                                a1 = np.random.uniform(low=1e-11,high=1e-10)
+                            temp[w] = score[w][j][t-1] + np.log(a1)
+                        w = np.argmax(temp)
+                        a2 = observation[T[i], corpus[lines][t]]
+                        if a2 == 0.0:
+                            a2 = np.random.uniform(low=1e-11,high=1e-10)
+                        score[j][i][t] = temp[w] + np.log(a2)
+                        bptr[j][i][t] = w
+
+            a = np.zeros((c), dtype=np.float64)
+            index = np.zeros((c), dtype=np.int16)
+            for i in range(c):
+                b = np.zeros((c), dtype=np.float64)
+                for j in range(c):
+                    a1 = transition[T[j], T[i], '</e>']
+                    if a1 == 0.0:
+                        a1 = np.random.uniform(low=1e-11,high=1e-10)
+                    b[j] = score[j][i][n] + np.log(a1)
+                j = np.argmax(b)
+                index[i] = j
+                a[i] = b[j]
+            i = np.argmax(a)
+            j = index[i]
+            tags[n] = i
+            tags[n-1] = j
+
+            for k in range(n-2,0,-1):
+                tags[k] = bptr[tags[k+1]][tags[k+2]][k+2]
+            tags_line = []
+            for k in range(1, n+1):
+                tags_line.append(T[tags[k]])
+            tags_list.append(tags_line)
+    return tags_list
+
+tags_list = viterbi_algorithm_trigram_test(test_corpus_using_validpart, transition_bigram_freqs, transition_trigram_freqs, observation_freqs, T)
+a = accuracy(standard_corpus_using_validpart, tags_list)
+print a
