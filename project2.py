@@ -84,19 +84,6 @@ train_size = int(original_data_size * 0.8 / 3.0)
 indices = random.sample(range(int(original_data_size / 3)), train_size)
 [dev_train_corpus, corpus_valid] = partition_traning_data(train_corpus, indices)
 
-def write_valid_into_file(corpus):
-    f = open('valid.csv', 'w')
-    for sentence in corpus:
-        for i in range(1,len(sentence)-2):
-            f.writelines(str(sentence[i]) + ' ')
-        f.writelines(str(sentence[len(sentence)-2]) + '\n')
-    f.close()
-    return 0
-
-write_valid_into_file(corpus_valid)
-standard_data_valid = 'valid.csv'
-standard_corpus_using_validpart = get_training_corpus(standard_data_valid)
-
 def write_dev_valid_into_file(corpus):
     f = open('dev_valid.csv', 'w')
     w_count = 0
@@ -119,35 +106,6 @@ test_data_valid = 'dev_valid.csv'
 test_corpus_using_validpart = get_test_corpus(test_data_valid)
 
 
-def accuracy(c1, c2):
-    w_count_all = 0
-    match = 0
-    
-    for j in range(len(c1)):
-        if j%3 == 2:
-            n = len(c1[j]) - 2
-            for i in range(1, n + 1):
-                if c1[j][i] == c2[(j+1)/3-1][i-1]:
-                    match += 1
-                w_count_all += 1
-    a = 1.0 * match / w_count_all
-    return a
-
-'''
-#lexicon <token, label> = #occurrence
-#the most basic baseline system
-def generate_baseline_NE_lexicon(corpus):
-    lexicon = defaultdict(float)
-    c_sentences = len(corpus)/3;
-    for j in range(c_sentences):
-        c_words = len(corpus[3*j+2])
-        for i in range(c_words):
-            if corpus[3*j+2][i] != 'O':
-                lexicon[corpus[3*j][i], corpus[3*j+2][i]] += 1
-    return lexicon
-
-baseline_NE_lexicon = generate_baseline_NE_lexicon(t_corpus)
-'''
 
 #calculate #(ti)
 def get_labels_unigram(corpus):
@@ -182,32 +140,29 @@ labels_trigram = get_labels_trigram(dev_train_corpus)
 
 
 #calculate P(t_i | t_i-1)
-def get_transition_bigram_freqs(corpus, unigram, k):
+def get_transition_bigram_freqs(corpus, unigram):
     transition = defaultdict(float)
     for sentence in corpus:
         if sentence[0] == '<e>':
             for i in range(len(sentence) - 1):
                 transition[sentence[i], sentence[i+1]] += 1
-    V = len(unigram)
     for key in transition:
         transition[key] = transition[key] * 1.0 / unigram[key[0]]
     return transition
 
-k = 0.01
-transition_bigram_freqs = get_transition_bigram_freqs(dev_train_corpus, labels_unigram, k)
+transition_bigram_freqs = get_transition_bigram_freqs(dev_train_corpus, labels_unigram)
 
 #calculate P(t_i| ti-2 ti-1) = #ti-2ti-1ti / #ti-2ti-1
-def get_transition_trigram_freqs(corpus, bigram, k):
+def get_transition_trigram_freqs(corpus, bigram):
     transition = defaultdict(float)
     for sentence in corpus:
         if sentence[0] == '<e>':
             for i in range(len(sentence) - 2):
                 transition[sentence[i], sentence[i+1], sentence[i+2]] += 1
-    V = len(bigram)
     for key in transition:
         transition[key] = transition[key] * 1.0 / bigram[key[0], key[1]]
     return transition
-transition_trigram_freqs = get_transition_trigram_freqs(dev_train_corpus, labels_bigram, k)
+transition_trigram_freqs = get_transition_trigram_freqs(dev_train_corpus, labels_bigram)
 
 #calculate P(w_i | t_i)
 #<label, token>
@@ -319,7 +274,8 @@ def viterbi_algorithm_bigram(corpus, transition, observation, T):
                 lexical_categories['MISC'].append(r4[m])
     return lexical_categories
 
-lexical_categories_bi = viterbi_algorithm_bigram(test_corpus, transition_bigram_freqs, observation_freqs, T)
+test_categories_bi = viterbi_algorithm_bigram(test_corpus, transition_bigram_freqs, observation_freqs, T)
+validation_categories_bi = viterbi_algorithm_bigram(test_corpus_using_validpart, transition_bigram_freqs, observation_freqs, T)
 
 
 def viterbi_algorithm_trigram(corpus, btransition, transition, observation, T):
@@ -399,15 +355,17 @@ def viterbi_algorithm_trigram(corpus, btransition, transition, observation, T):
                 lexical_categories['MISC'].append(r4[m])
     return lexical_categories
 
-lexical_categories_tri = viterbi_algorithm_trigram(test_corpus, transition_bigram_freqs, transition_trigram_freqs, observation_freqs, T)
+#test_categories_tri = viterbi_algorithm_trigram(test_corpus, transition_bigram_freqs, transition_trigram_freqs, observation_freqs, T)
+#validation_categories_tri = viterbi_algorithm_trigram(test_corpus_using_validpart, transition_bigram_freqs, transition_trigram_freqs, observation_freqs, T)
 #normalize output 
 #Type,Prediction
 #PER,......
 #LOC,......
 #ORG,......
 #MISC,.....
-def output_test_result(result):
-    f = open('smoothaddkbigram.csv', 'w')
+def output_test_result(result, name):
+    filename = name + '.csv'
+    f = open(filename, 'w')
     f.writelines('Type,Prediction\n')
     str1 = 'PER,'
     for index in range(len(result['PER'])):
@@ -435,106 +393,195 @@ def output_test_result(result):
     f.writelines(str4)
     f.close()
 
-output_test_result(lexical_categories_bi)
+output_test_result(test_categories_bi, 'bigram')
+#output_test_result(test_categories_tri, 'trigram')
 
-def output_test_result_b(result):
-    f = open('smoothaddktrigram.csv', 'w')
-    f.writelines('Type,Prediction\n')
-    str1 = 'PER,'
-    for index in range(len(result['PER'])):
-        if result['PER'][index] != '':
-            str1 += str(result['PER'][index]) + ' '
-    str1 += '\n'
-    f.writelines(str1)
-    str2 = 'LOC,'
-    for index in range(len(result['LOC'])):
-        if result['LOC'][index] != '':
-            str2 += str(result['LOC'][index]) + ' '
-    str2 += '\n'
-    f.writelines(str2)
-    str3 = 'ORG,'
-    for index in range(len(result['ORG'])):
-        if result['ORG'][index] != '':
-            str3 += str(result['ORG'][index]) + ' '
-    str3 += '\n'
-    f.writelines(str3)
-    str4 = 'MISC,'
-    for index in range(len(result['MISC'])):
-        if result['MISC'][index] != '':
-            str4 += str(result['MISC'][index]) + ' '
-    str4 += '\n'
-    f.writelines(str4)
-    f.close()
-output_test_result_b(lexical_categories_tri)
+def get_standard_corpus(corpus):
+    dev_corpus = []
+    for sentence in corpus:
+        new_line = []
+        for i in range(1,len(sentence)-1):
+            new_line.append(str(sentence[i]))
+        dev_corpus.append(new_line)
+    return dev_corpus
+standard_corpus = get_standard_corpus(corpus_valid)
 
-
-####
-def viterbi_algorithm_trigram_test(corpus, btransition, transition, observation, T):
-    f = open('tags.csv','w')
-    tags_list = []
-    c = len(T)
-    for lines in range(len(corpus)):
-        if corpus[lines][0] == '<s>':
-            n = len(corpus[lines])-2
-            tags = np.zeros((n+1), dtype=np.int16)
+def normalize_standard(corpus):
+    lexical_categories = defaultdict(list)
+    count = 0
+    for j in range(len(corpus)):
+        if j%3 == 2:
             single_line_category = defaultdict(list)
-            score = np.zeros((c,c,n+2), dtype=np.float64)
-            bptr = np.zeros((c,c,n+2), dtype=np.int16)
-            
-            #initialize t=1
-            for i in range(c):
-                for j in range(c):
-                    a1 = transition['<e>', T[i]]
-                    a2 = observation[T[i], corpus[lines][1]]
-                    if a1 == 0.0:
-                        a1 = np.random.uniform(low=1e-11,high=1e-10)
-                    if a2 == 0.0:
-                        a2 = np.random.uniform(low=1e-11,high=1e-10)
-                    score[j][i][1] = np.log(a1) + np.log(a2)
-                    bptr[j][i][1] = 0
+            for i in range(len(corpus[j])):
+                single_line_category[corpus[j][i]].append(str(count))
+                count += 1
+            r1 = merge(single_line_category['B-PER'], single_line_category['I-PER'])
+            for m in range(len(r1)):
+                lexical_categories['PER'].append(r1[m])
+            r2 = merge(single_line_category['B-LOC'], single_line_category['I-LOC'])
+            for m in range(len(r2)):
+                lexical_categories['LOC'].append(r2[m])
+            r3 = merge(single_line_category['B-ORG'], single_line_category['I-ORG'])
+            for m in range(len(r3)):
+                lexical_categories['ORG'].append(r3[m])
+            r4 = merge(single_line_category['B-MISC'], single_line_category['I-MISC'])
+            for m in range(len(r4)):
+                lexical_categories['MISC'].append(r4[m])
+    return lexical_categories
+dev_standard_corpus = normalize_standard(standard_corpus)
 
-            #iteration
-            for t in range(2, n+1):
-                for i in range(c):
-                    for j in range(c):
-                        temp = np.zeros((c), dtype=np.float64)
-                        for w in range(c):
-                            a1 = transition[T[w], T[j], T[i]]
-                            if a1 == 0.0:
-                                a1 = np.random.uniform(low=1e-11,high=1e-10)
-                            temp[w] = score[w][j][t-1] + np.log(a1)
-                        w = np.argmax(temp)
-                        a2 = observation[T[i], corpus[lines][t]]
-                        if a2 == 0.0:
-                            a2 = np.random.uniform(low=1e-11,high=1e-10)
-                        score[j][i][t] = temp[w] + np.log(a2)
-                        bptr[j][i][t] = w
+def compare(c1, c2):
+    bound1 = len(c1['PER'])
+    bound2 = len(c2['PER'])
+    p1 = 0
+    p2 = 0
+    intersection = 0
+    P = 0
+    C = 0
+    while p1<bound1 and p2<bound2:
+        str1 = c1['PER'][p1]
+        str2 = c2['PER'][p2]
+        if str1 == str2:
+            intersection += 1
+            p1 += 1
+            p2 += 1
+            P += 1
+            C += 1
+        else:
+            num1 = map(eval, str1.split('-'))
+            num2 = map(eval, str2.split('-'))
+            if num1 > num2:
+                p2 += 1
+                P += 1
+            elif num1 < num2:
+                p1 += 1
+                C += 1
+            else:
+                p1 += 1
+                p2 += 1
+                P += 1
+                C += 1
+    if p1 == bound1 and p2 <bound2:
+        while(p2 < bound2):
+            P += 1
+            p2 += 1
+    elif p1 < bound1 and p2 == bound2:
+        while (p1 < bound1):
+            C += 1
+            p1 += 1
+    bound1 = len(c1['LOC'])
+    bound2 = len(c2['LOC'])
+    p1 = 0
+    p2 = 0
+    while p1<bound1 and p2<bound2:
+        str1 = c1['LOC'][p1]
+        str2 = c2['LOC'][p2]
+        if str1 == str2:
+            intersection += 1
+            p1 += 1
+            p2 += 1
+            P += 1
+            C += 1
+        else:
+            num1 = map(eval, str1.split('-'))
+            num2 = map(eval, str2.split('-'))
+            if num1 > num2:
+                p2 += 1
+                P += 1
+            elif num1 < num2:
+                p1 += 1
+                C += 1
+            else:
+                p1 += 1
+                p2 += 1
+                P += 1
+                C += 1
+    if p1 == bound1 and p2 <bound2:
+        while(p2 < bound2):
+            P += 1
+            p2 += 1
+    elif p1 < bound1 and p2 == bound2:
+        while (p1 < bound1):
+            C += 1
+            p1 += 1
+    bound1 = len(c1['ORG'])
+    bound2 = len(c2['ORG'])
+    p1 = 0
+    p2 = 0
+    while p1<bound1 and p2<bound2:
+        str1 = c1['ORG'][p1]
+        str2 = c2['ORG'][p2]
+        if str1 == str2:
+            intersection += 1
+            p1 += 1
+            p2 += 1
+            P += 1
+            C += 1
+        else:
+            num1 = map(eval, str1.split('-'))
+            num2 = map(eval, str2.split('-'))
+            if num1 > num2:
+                p2 += 1
+                P += 1
+            elif num1 < num2:
+                p1 += 1
+                C += 1
+            else:
+                p1 += 1
+                p2 += 1
+                P += 1
+                C += 1
+    if p1 == bound1 and p2 <bound2:
+        while(p2 < bound2):
+            P += 1
+            p2 += 1
+    elif p1 < bound1 and p2 == bound2:
+        while (p1 < bound1):
+            C += 1
+            p1 += 1
+    bound1 = len(c1['MISC'])
+    bound2 = len(c2['MISC'])
+    p1 = 0
+    p2 = 0
+    while p1<bound1 and p2<bound2:
+        str1 = c1['MISC'][p1]
+        str2 = c2['MISC'][p2]
+        if str1 == str2:
+            intersection += 1
+            p1 += 1
+            p2 += 1
+            P += 1
+            C += 1
+        else:
+            num1 = map(eval, str1.split('-'))
+            num2 = map(eval, str2.split('-'))
+            if num1 > num2:
+                p2 += 1
+                P += 1
+            elif num1 < num2:
+                p1 += 1
+                C += 1
+            else:
+                p1 += 1
+                p2 += 1
+                P += 1
+                C += 1
+    if p1 == bound1 and p2 <bound2:
+        while(p2 < bound2):
+            P += 1
+            p2 += 1
+    elif p1 < bound1 and p2 == bound2:
+        while (p1 < bound1):
+            C += 1
+            p1 += 1
+    precise = intersection * 1.0 / P
+    recall = intersection * 1.0 / C
+    F = 2.0 * precise * recall / (precise + recall)
+    return [precise, recall, F]
 
-            a = np.zeros((c), dtype=np.float64)
-            index = np.zeros((c), dtype=np.int16)
-            for i in range(c):
-                b = np.zeros((c), dtype=np.float64)
-                for j in range(c):
-                    a1 = transition[T[j], T[i], '</e>']
-                    if a1 == 0.0:
-                        a1 = np.random.uniform(low=1e-11,high=1e-10)
-                    b[j] = score[j][i][n] + np.log(a1)
-                j = np.argmax(b)
-                index[i] = j
-                a[i] = b[j]
-            i = np.argmax(a)
-            j = index[i]
-            tags[n] = i
-            tags[n-1] = j
+[p_bi, r_bi, F_bi] = compare(dev_standard_corpus, validation_categories_bi)
+#[p_tri, r_tri, F_tri] = compare(dev_standard_corpus, validation_categories_tri)
+print [p_bi, r_bi, F_bi]
+#print [p_tri, r_tri, F_tri]
 
-            for k in range(n-2,0,-1):
-                tags[k] = bptr[tags[k+1]][tags[k+2]][k+2]
-            tags_line = []
-            for k in range(1, n+1):
-                tags_line.append(T[tags[k]])
-            tags_list.append(tags_line)
-    return tags_list
 
-tags_list = viterbi_algorithm_trigram_test(test_corpus_using_validpart, transition_bigram_freqs, transition_trigram_freqs, observation_freqs, T)
-a = accuracy(standard_corpus_using_validpart, tags_list)
-print a
