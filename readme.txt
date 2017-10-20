@@ -38,8 +38,14 @@ e.g. <s>Sentence</s>, <p>POS</p>, <i>Indices</i>
 
 16.viterbi_algorithm_trigram(corpus, btransition, transition, observation, T): viterbi algorithm using trigram.
 
-17&18.output_test_result(result): write result into file
+17.output_test_result(result): write result into file
 
-19.viterbi_algorithm_trigram_test(corpus, btransition, transition, observation, T): label data of validation part using viterbi algorithm with trigram
+18.get_standard_corpus(file): read the file contains golden output 
 
+19.normalize_standard(corpus): make the golden file be in format:
+PER,……
+LOC,……
+ORG,……
+MISC,……
 
+20.compare(c1, c2):calculate 3 parameters: precision, recall and F score.
